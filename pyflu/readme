@@ -1,1 +1,1 @@
-base_1文件是最基础的启动fluent、计算简单case，输出流场、压力场信息
+base_1文件是最基础的启动fluent、计算简单case，输出流场、压力场信息，最后输出cas.h5 dat.h5和field.csv
