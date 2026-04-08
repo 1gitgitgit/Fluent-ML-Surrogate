@@ -42,7 +42,7 @@ print(f"网格检查完成，请确认范围是否符合物理实际。")
 # ======================== 4. 物理模型与材料 ========================
 print("\n设置物理模型与材料...")
 solver.setup.models.viscous.model = "laminar"
-
+print(solver.setup.cell_zone_conditions.fluid.keys())
 # 尝试添加 water-liquid 材料（如果数据库中没有则从数据库复制）
 solver.tui.define.materials.copy("fluid", "water-liquid")
 # 将区域设定为水
