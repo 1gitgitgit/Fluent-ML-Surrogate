@@ -10,7 +10,7 @@
 ## 已完成
 - ✅ PyFluent 自动化多工况计算（带容错）
 - ✅ 随机森林代理模型
-- ✅ LightGBM 代理模型（NRMSE < X%）
+- ✅ LightGBM 代理模型（NRMSE < 0.5%）
 
 ## 文件说明
 - `base_2_multiple.py` - PyFluent 批量计算脚本
@@ -20,4 +20,6 @@
 ## 运行环境
 - Python 3.12
 - PyFluent, LightGBM, scikit-learn, pandas, numpy,matplotlib
+
+<img width="2100" height="1500" alt="rf_results" src="https://github.com/user-attachments/assets/da285f4c-5631-4450-95ca-428cb5130a04" />
 
