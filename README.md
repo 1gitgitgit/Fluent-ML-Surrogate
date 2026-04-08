@@ -21,5 +21,5 @@
 - Python 3.12
 - PyFluent, LightGBM, scikit-learn, pandas, numpy,matplotlib
 
-<img width="2100" height="1500" alt="rf_results" src="https://github.com/user-attachments/assets/da285f4c-5631-4450-95ca-428cb5130a04" />
+<img width="800" alt="rf_results" src="https://github.com/user-attachments/assets/da285f4c-5631-4450-95ca-428cb5130a04" />
 
