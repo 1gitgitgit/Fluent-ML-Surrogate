@@ -19,7 +19,5 @@
 
 ## 运行环境
 - Python 3.12
-- PyFluent, LightGBM, scikit-learn, pandas, numpy
+- PyFluent, LightGBM, scikit-learn, pandas, numpy,matplotlib
 
-## 当前进度
-Week 1 完成 - 等待推送结果图
