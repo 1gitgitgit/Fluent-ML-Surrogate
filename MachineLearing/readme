@@ -1,0 +1,18 @@
+使用机器学习预测速度和压力场
+随机森林：
+[Pressure (Pa)]
+  RMSE:  6.918936e+01
+  NRMSE: 0.5731%
+
+[Velocity Magnitude (m/s)]
+  RMSE:  3.809538e-03
+  NRMSE: 0.3209%
+
+LGBM：
+[Pressure (Pa) 评估结果]
+  RMSE:  7.124506e+01
+  NRMSE: 0.5901%
+
+[Velocity Magnitude (m/s) 评估结果]
+  RMSE:  6.271101e-03
+  NRMSE: 0.5283%
