@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import time  # 导入时间模块
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 import lightgbm as lgb
@@ -8,7 +9,6 @@ import os
 
 # ========= 1. 配置 =========
 DATA_DIR = r"D:\VScode\project\2026\demo1\2026-4-5\project_data\data"
-# 包含你文件夹中所有的工况
 VELOCITY_LIST = [0.01, 0.02, 0.05, 0.06, 0.08, 0.1, 0.2, 0.3, 0.5]
 
 # ========= 2. 读取多工况数据 =========
@@ -43,7 +43,6 @@ for v in VELOCITY_LIST:
     else:
         print(f"✅ {status_msg}")
     
-    # 特征构建
     df["x"] = df["x1"]
     df["y"] = df["y1"]
     df["velocity"] = v
@@ -63,33 +62,48 @@ X_train, X_test, yp_train, yp_test, yv_train, yv_test = train_test_split(
     X, y_pressure, y_velmag, test_size=0.2, random_state=42
 )
 
-# ========= 5. 训练模型 (已整合静默与参数优化) =========
+# ========= 5. 训练模型 (加入计时逻辑) =========
 def train_lgbm(X_train, y_train, label_name):
     print(f"正在训练 {label_name} 模型...")
+    start_time = time.time()  # 记录开始时间
+    
     model = lgb.LGBMRegressor(
         n_estimators=1000,
         learning_rate=0.08,
-        num_leaves=50,       # 适中大小，兼顾精度与防止过拟合
+        num_leaves=50,
         max_depth=10,
         n_jobs=-1,
         random_state=42,
         importance_type='gain',
-        verbose=-1           # 关键：不再弹出 "No further splits" 警告
+        verbose=-1
     )
     model.fit(X_train, y_train)
+    
+    end_time = time.time()    # 记录结束时间
+    print(f"--- {label_name} 训练完成，耗时: {end_time - start_time:.2f} 秒 ---")
     return model
+
+total_train_start = time.time()
 
 model_p = train_lgbm(X_train, yp_train, "Pressure")
 model_v = train_lgbm(X_train, yv_train, "Velocity")
 
-# ========= 6. 评估 =========
+total_train_end = time.time()
+print(f"\n>>> 所有模型总训练耗时: {total_train_end - total_train_start:.2f} 秒")
+
+# ========= 6. 评估 (加入预测耗时统计) =========
 def evaluate(model, X_test, y_test, name):
+    start_pred = time.time()
     y_pred = model.predict(X_test)
+    end_pred = time.time()
+    
     rmse  = np.sqrt(mean_squared_error(y_test, y_pred))
     nrmse = rmse / (y_test.max() - y_test.min())
+    
     print(f"\n[{name} 评估结果]")
-    print(f"  RMSE:  {rmse:.6e}")
-    print(f"  NRMSE: {nrmse:.4%}")
+    print(f"  预测耗时: {end_pred - start_pred:.4f} 秒 (样本数: {len(X_test)})")
+    print(f"  RMSE:     {rmse:.6e}")
+    print(f"  NRMSE:    {nrmse:.4%}")
     return y_pred
 
 yp_pred = evaluate(model_p, X_test, yp_test, "Pressure (Pa)")
@@ -121,12 +135,11 @@ ax.set_title("Velocity: Predicted vs True")
 v_plot = 0.05
 subset = data[data["velocity"] == v_plot]
 if not subset.empty:
-    # 压力场
     ax = axes[1, 0]
     sc1 = ax.scatter(subset["x"], subset["y"], c=subset["pressure"], cmap="jet", s=1)
     plt.colorbar(sc1, ax=ax, label="Pressure (Pa)")
     ax.set_title(f"Pressure Field (v={v_plot} m/s)")
-    # 速度场
+    
     ax = axes[1, 1]
     sc2 = ax.scatter(subset["x"], subset["y"], c=subset["vel_mag"], cmap="coolwarm", s=1)
     plt.colorbar(sc2, ax=ax, label="Velocity Magnitude (m/s)")
