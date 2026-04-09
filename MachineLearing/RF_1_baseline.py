@@ -1,14 +1,13 @@
-#使用随机森林训练预测速度和压力场
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import time  # 导入时间模块
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 from sklearn.ensemble import RandomForestRegressor
 
 # ========= 1. 配置 =========
 DATA_DIR = r"D:\VScode\project\2026\demo1\2026-4-5\project_data\data"
-# 修改后的完整列表
 VELOCITY_LIST = [0.01, 0.02, 0.05, 0.06, 0.08, 0.1, 0.2, 0.3, 0.5]
 
 # ========= 2. 读取多工况数据 =========
@@ -16,7 +15,6 @@ dfs = []
 for v in VELOCITY_LIST:
     file_path = f"{DATA_DIR}\\full_field_v{v}.csv"
     
-    # 读取原始数据
     df = pd.read_csv(
         file_path,
         delim_whitespace=True,
@@ -28,20 +26,16 @@ for v in VELOCITY_LIST:
         "pressure", "vel_mag", "vx", "vy"
     ]
     
-    # 数据清洗与统计
     original_count = len(df)
     df = df.replace([np.inf, -np.inf], np.nan).dropna()
     dropped_count = original_count - len(df)
     drop_rate = dropped_count / original_count
     
-    # 打印监测信息
     print(f"工况 v={v}: 清洗掉 {dropped_count} 个异常点 (占比: {drop_rate:.2%})")
     
-    # 核心判断：如果大于 5%，发出醒目警告
     if drop_rate > 0.05:
-        print(f"--- ❗ 警告: v={v} 工况剔除比例过高 ({drop_rate:.2%})，请检查 CFD 原始数据质量！ ---")
+        print(f"--- ❗ 警告: v={v} 工况剔除比例过高 ({drop_rate:.2%}) ---")
 
-    # 后续特征处理
     df["x"] = df["x1"]
     df["y"] = df["y1"]
     df["velocity"] = v
@@ -62,8 +56,11 @@ X_train, X_test, yp_train, yp_test, yv_train, yv_test = train_test_split(
     X, y_pressure, y_velmag, test_size=0.2, random_state=42
 )
 
-# ========= 5. 训练模型 =========
-def train_rf(X_train, y_train):
+# ========= 5. 训练模型 (加入计时) =========
+def train_rf(X_train, y_train, name="Model"):
+    print(f"正在训练 {name}...")
+    start_time = time.time()  # 记录开始时间
+    
     model = RandomForestRegressor(
         n_estimators=200,
         max_depth=15,
@@ -71,21 +68,32 @@ def train_rf(X_train, y_train):
         random_state=42
     )
     model.fit(X_train, y_train)
+    
+    end_time = time.time()    # 记录结束时间
+    print(f"{name} 训练耗时: {end_time - start_time:.2f} 秒")
     return model
 
-print("训练压力模型...")
-model_p = train_rf(X_train, yp_train)
-print("训练速度模型...")
-model_v = train_rf(X_train, yv_train)
+total_start = time.time()
 
-# ========= 6. 评估 =========
+model_p = train_rf(X_train, yp_train, "压力模型 (Pressure)")
+model_v = train_rf(X_train, yv_train, "速度模型 (Velocity)")
+
+total_end = time.time()
+print(f"\n>>> 总体训练总耗时: {total_end - total_start:.2f} 秒")
+
+# ========= 6. 评估 (加入预测耗时统计) =========
 def evaluate(model, X_test, y_test, name):
+    start_pred = time.time()
     y_pred = model.predict(X_test)
+    end_pred = time.time()
+    
     rmse  = np.sqrt(mean_squared_error(y_test, y_pred))
     nrmse = rmse / (y_test.max() - y_test.min())
+    
     print(f"\n[{name}]")
-    print(f"  RMSE:  {rmse:.6e}")
-    print(f"  NRMSE: {nrmse:.4%}")
+    print(f"  预测耗时: {end_pred - start_pred:.4f} 秒 (样本数: {len(X_test)})")
+    print(f"  RMSE:     {rmse:.6e}")
+    print(f"  NRMSE:    {nrmse:.4%}")
     return y_pred
 
 yp_pred = evaluate(model_p, X_test, yp_test, "Pressure (Pa)")
