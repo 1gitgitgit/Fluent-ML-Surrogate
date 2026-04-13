@@ -1,0 +1,238 @@
+import pandas as pd
+import numpy as np
+import torch
+import torch.nn as nn
+from torch.utils.data import TensorDataset, DataLoader
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
+from sklearn.preprocessing import StandardScaler
+import matplotlib.pyplot as plt
+import time
+import os
+
+# ========= 1. 配置 =========
+DATA_DIR = r"D:\VScode\project\2026\demo1\2026-4-5\project_data\data"
+VELOCITY_LIST = [0.01, 0.02, 0.05, 0.06, 0.08, 0.1, 0.2, 0.3, 0.5]
+
+# ========= 2. 读取数据 =========
+dfs = []
+print("正在加载数据...")
+for v in VELOCITY_LIST:
+    file_path = os.path.join(DATA_DIR, f"full_field_v{v}.csv")
+    if not os.path.exists(file_path):
+        continue
+    df = pd.read_csv(file_path, delim_whitespace=True, skiprows=1, header=None)
+    df.columns = ["cellnumber", "x1", "y1", "x2", "y2", "pressure", "vel_mag", "vx", "vy"]
+    df = df.replace([np.inf, -np.inf], np.nan).dropna()
+    df["x"] = df["x1"]
+    df["y"] = df["y1"]
+    df["velocity"] = v
+    df = df.drop(columns=["cellnumber", "x1", "y1", "x2", "y2"])
+    dfs.append(df)
+
+data = pd.concat(dfs, ignore_index=True)
+print(f"数据加载完成, 总样本数: {len(data)}")
+
+# ========= 3. 特征标签 =========
+X = data[["x", "y", "vx", "vy", "velocity"]]
+y_pressure = data["pressure"]
+y_velmag = data["vel_mag"]
+
+X_train, X_test, yp_train, yp_test, yv_train, yv_test = train_test_split(
+    X, y_pressure, y_velmag, test_size=0.2, random_state=42
+)
+
+# ========= 4. 定义MLP =========
+class MLP(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(5, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1)
+        )
+    
+    def forward(self, x):
+        return self.net(x)
+
+# ========= 5. 训练函数（增加loss记录）=========
+def train_mlp(X_train, y_train, label_name, epochs=100):
+    print(f"\n>>> 开始训练 {label_name} MLP 模型...")
+    start = time.time()
+    
+    # 归一化
+    scaler_X = StandardScaler()
+    scaler_y = StandardScaler()
+    X_scaled = scaler_X.fit_transform(X_train)
+    y_scaled = scaler_y.fit_transform(y_train.values.reshape(-1, 1)).flatten()
+    
+    # 转Tensor
+    X_tensor = torch.FloatTensor(X_scaled)
+    y_tensor = torch.FloatTensor(y_scaled).reshape(-1, 1)
+    
+    dataset = TensorDataset(X_tensor, y_tensor)
+    loader = DataLoader(dataset, batch_size=2048, shuffle=True)
+    
+    model = MLP()
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    
+    # 记录每个epoch的loss
+    loss_history = []
+    
+    for epoch in range(epochs):
+        epoch_loss = 0.0
+        batch_count = 0
+        
+        for X_batch, y_batch in loader:
+            optimizer.zero_grad()
+            pred = model(X_batch)
+            loss = criterion(pred, y_batch)
+            loss.backward()
+            optimizer.step()
+            
+            epoch_loss += loss.item()
+            batch_count += 1
+        
+        # 计算并记录平均loss
+        avg_loss = epoch_loss / batch_count
+        loss_history.append(avg_loss)
+        
+        if (epoch+1) % 20 == 0:
+            print(f"  Epoch {epoch+1}/{epochs}, Loss: {avg_loss:.6e}")
+    
+    train_time = time.time() - start
+    print(f"--- {label_name} 训练完成, 累计耗时: {train_time:.2f} 秒 ---")
+    return model, scaler_X, scaler_y, loss_history
+
+# ========= 6. 训练 =========
+overall_start = time.time()
+
+model_p, scaler_Xp, scaler_yp, loss_history_p = train_mlp(X_train, yp_train, "Pressure", epochs=100)
+model_v, scaler_Xv, scaler_yv, loss_history_v = train_mlp(X_train, yv_train, "Velocity", epochs=100)
+
+overall_end = time.time()
+print(f"\n[训练统计] 总计耗时: {overall_end - overall_start:.2f} 秒")
+
+# ========= 7. 评估 =========
+def evaluate(model, scaler_X, scaler_y, X_test, y_test, name):
+    print(f"\n正在评估 {name}...")
+    model.eval()
+    
+    start_eval = time.perf_counter()
+    with torch.no_grad():
+        X_scaled = scaler_X.transform(X_test)
+        X_tensor = torch.FloatTensor(X_scaled)
+        y_pred_scaled = model(X_tensor).numpy().flatten()
+        y_pred = scaler_y.inverse_transform(y_pred_scaled.reshape(-1, 1)).flatten()
+    end_eval = time.perf_counter()
+    
+    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+    nrmse = rmse / (y_test.max() - y_test.min())
+    
+    print(f"[{name} 评估结果]")
+    print(f"  预测耗时: {end_eval - start_eval:.4f} 秒 (样本数: {len(X_test)})")
+    print(f"  RMSE:     {rmse:.6e}")
+    print(f"  NRMSE:    {nrmse:.4%}")
+    return y_pred
+
+yp_pred = evaluate(model_p, scaler_Xp, scaler_yp, X_test, yp_test, "Pressure (Pa)")
+yv_pred = evaluate(model_v, scaler_Xv, scaler_yv, X_test, yv_test, "Velocity (m/s)")
+
+# ========= 8. 可视化（增加loss曲线）=========
+fig, axes = plt.subplots(3, 2, figsize=(14, 14))
+fig.suptitle("MLP Surrogate Model — Multi-Velocity Results", fontsize=14)
+
+# 8.1 压力：预测 vs 真实
+ax = axes[0, 0]
+ax.scatter(yp_test, yp_pred, s=1, alpha=0.3, color="steelblue")
+lims = [min(yp_test.min(), yp_pred.min()), max(yp_test.max(), yp_pred.max())]
+ax.plot(lims, lims, "r--", linewidth=1)
+ax.set_xlabel("True Pressure (Pa)")
+ax.set_ylabel("Predicted Pressure (Pa)")
+ax.set_title("Pressure: Predicted vs True")
+ax.grid(True, alpha=0.3)
+
+# 8.2 速度：预测 vs 真实
+ax = axes[0, 1]
+ax.scatter(yv_test, yv_pred, s=1, alpha=0.3, color="darkorange")
+lims = [min(yv_test.min(), yv_pred.min()), max(yv_test.max(), yv_pred.max())]
+ax.plot(lims, lims, "r--", linewidth=1)
+ax.set_xlabel("True Velocity Magnitude (m/s)")
+ax.set_ylabel("Predicted Velocity Magnitude (m/s)")
+ax.set_title("Velocity: Predicted vs True")
+ax.grid(True, alpha=0.3)
+
+# 8.3 压力模型训练Loss曲线
+ax = axes[1, 0]
+ax.plot(range(1, len(loss_history_p)+1), loss_history_p, 'b-', linewidth=1.5)
+ax.set_xlabel("Epoch")
+ax.set_ylabel("Loss (MSE)")
+ax.set_title("Pressure Model Training Loss")
+ax.set_yscale('log')  # 使用对数坐标更清晰
+ax.grid(True, alpha=0.3)
+
+# 8.4 速度模型训练Loss曲线
+ax = axes[1, 1]
+ax.plot(range(1, len(loss_history_v)+1), loss_history_v, 'orange', linewidth=1.5)
+ax.set_xlabel("Epoch")
+ax.set_ylabel("Loss (MSE)")
+ax.set_title("Velocity Model Training Loss")
+ax.set_yscale('log')  # 使用对数坐标更清晰
+ax.grid(True, alpha=0.3)
+
+# 8.5 单工况流场压力分布（取v=0.05工况）
+v_plot = 0.05
+subset = data[data["velocity"] == v_plot]
+ax = axes[2, 0]
+sc = ax.scatter(subset["x"], subset["y"], c=subset["pressure"],
+                cmap="jet", s=1)
+plt.colorbar(sc, ax=ax, label="Pressure (Pa)")
+ax.set_title(f"Pressure Field (v={v_plot} m/s)")
+ax.set_xlabel("x (m)")
+ax.set_ylabel("y (m)")
+
+# 8.6 单工况流场速度分布
+ax = axes[2, 1]
+sc = ax.scatter(subset["x"], subset["y"], c=subset["vel_mag"],
+                cmap="coolwarm", s=1)
+plt.colorbar(sc, ax=ax, label="Velocity Magnitude (m/s)")
+ax.set_title(f"Velocity Field (v={v_plot} m/s)")
+ax.set_xlabel("x (m)")
+ax.set_ylabel("y (m)")
+
+plt.tight_layout()
+save_path = os.path.join(DATA_DIR, "mlp_results_with_loss.png")
+plt.savefig(save_path, dpi=150)
+plt.show()
+
+print(f"\n🚀 任务完成！图片已保存至: {save_path}")
+
+# ========= 9. 单独保存Loss曲线图 =========
+fig_loss, axes_loss = plt.subplots(1, 2, figsize=(12, 4))
+fig_loss.suptitle("Training Loss Curves", fontsize=14)
+
+# 压力Loss
+axes_loss[0].plot(range(1, len(loss_history_p)+1), loss_history_p, 'b-', linewidth=1.5)
+axes_loss[0].set_xlabel("Epoch")
+axes_loss[0].set_ylabel("Loss (MSE)")
+axes_loss[0].set_title("Pressure Model")
+axes_loss[0].set_yscale('log')
+axes_loss[0].grid(True, alpha=0.3)
+
+# 速度Loss
+axes_loss[1].plot(range(1, len(loss_history_v)+1), loss_history_v, 'orange', linewidth=1.5)
+axes_loss[1].set_xlabel("Epoch")
+axes_loss[1].set_ylabel("Loss (MSE)")
+axes_loss[1].set_title("Velocity Model")
+axes_loss[1].set_yscale('log')
+axes_loss[1].grid(True, alpha=0.3)
+
+plt.tight_layout()
+loss_save_path = os.path.join(DATA_DIR, "loss_curves.png")
+plt.savefig(loss_save_path, dpi=150)
+plt.show()
+
+print(f"📊 Loss曲线已单独保存至: {loss_save_path}")
