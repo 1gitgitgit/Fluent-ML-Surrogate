@@ -56,7 +56,7 @@ X_train, X_test, yp_train, yp_test, yv_train, yv_test = train_test_split(
     X, y_pressure, y_velmag, test_size=0.2, random_state=42
 )
 
-# ========= 5. 训练模型 (加入计时) =========
+# ========= 5. 训练模型 (加入计时) =====D:\VScode\project\2026\demo1====
 def train_rf(X_train, y_train, name="Model"):
     print(f"正在训练 {name}...")
     start_time = time.time()  # 记录开始时间
@@ -80,6 +80,33 @@ model_v = train_rf(X_train, yv_train, "速度模型 (Velocity)")
 
 total_end = time.time()
 print(f"\n>>> 总体训练总耗时: {total_end - total_start:.2f} 秒")
+
+# ========= 5.1 特征重要性分析 =========
+def plot_feature_importance(model, feature_names, title):
+    importances = model.feature_importances_
+    indices = np.argsort(importances)[::-1]
+
+    print(f"\n[{title} 特征重要性]")
+    for i in indices:
+        print(f"{feature_names[i]:10s}: {importances[i]:.4f}")
+
+    # 可视化
+    plt.figure(figsize=(6, 4))
+    plt.bar(range(len(importances)), importances[indices])
+    plt.xticks(range(len(importances)), np.array(feature_names)[indices], rotation=30)
+    plt.ylabel("Importance")
+    plt.title(title)
+    plt.tight_layout()
+    plt.show()
+
+# 特征名
+feature_names = X.columns.tolist()
+
+# 压力模型特征重要性
+plot_feature_importance(model_p, feature_names, "Pressure Model")
+
+# 速度模型特征重要性
+plot_feature_importance(model_v, feature_names, "Velocity Model")
 
 # ========= 6. 评估 (加入预测耗时统计) =========
 def evaluate(model, X_test, y_test, name):
